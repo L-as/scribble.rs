@@ -49,6 +49,8 @@
                         placeholder="Enter your additional words, seperating them by commas">{{.CustomWords}}</textarea>
                     <label for="custom_words_chance">Custom Words Chance</label>
                     <input type="range" name="custom_words_chance" min=1 max=100 value="{{.CustomWordsChance}}" />
+                    <label for="allow_custom_words">Allow arbitrary words to be chosen by all players</label>
+                    <input type="checkbox" name="allow_custom_words" value=true {{if .AllowCustomWords}} checked {{end}} />
                     <label for="clients_per_ip_limit">Clients per IP Limit</label>
                     <input type="number" name="clients_per_ip_limit" min=1 step=1
                             value="{{.ClientsPerIPLimit}}" required />

@@ -37,6 +37,7 @@ type CreatePageData struct {
 	MaxPlayers        string
 	CustomWords       string
 	CustomWordsChance string
+	AllowCustomWords  bool
 	ClientsPerIPLimit string
 	EnableVotekick    bool
 }
@@ -49,6 +50,7 @@ func createDefaultLobbyCreatePageData() *CreatePageData {
 		Rounds:            "4",
 		MaxPlayers:        "12",
 		CustomWordsChance: "50",
+		AllowCustomWords:  false,
 		ClientsPerIPLimit: "1",
 		EnableVotekick:    true,
 	}
@@ -266,6 +268,18 @@ func wsListen(lobby *Lobby, player *Player, socket *websocket.Conn) {
 					lobby.CurrentWord = lobby.WordChoice[chosenIndex]
 					lobby.WordChoice = nil
 					lobby.WordHints = createWordHintFor(lobby.CurrentWord)
+					lobby.WordHintsShown = showAllInWordHints(lobby.WordHints)
+					triggerWordHintUpdate(lobby)
+					if lobby.Drawer.State != Disconnected && lobby.Drawer.ws != nil {
+						lobby.Drawer.WriteAsJSON(JSEvent{Type: "your-turn"})
+					}
+				}
+			} else if received.Type == "choose-word-custom" {
+				word := (received.Data).(string)
+				if player == lobby.Drawer {
+					lobby.CurrentWord = word
+					lobby.WordChoice = nil
+					lobby.WordHints = createWordHintFor(word)
 					lobby.WordHintsShown = showAllInWordHints(lobby.WordHints)
 					triggerWordHintUpdate(lobby)
 					if lobby.Drawer.State != Disconnected && lobby.Drawer.ws != nil {
@@ -758,13 +772,14 @@ func triggerSimpleUpdateEvent(eventType string, lobby *Lobby) {
 // LobbyPageData is the data necessary for initially displaying all data of
 // the lobbies webpage.
 type LobbyPageData struct {
-	Players        []*Player
-	Port           int
-	LobbyID        string
-	WordHints      []*WordHint
-	Round          int
-	Rounds         int
-	EnableVotekick bool
+	Players          []*Player
+	Port             int
+	LobbyID          string
+	WordHints        []*WordHint
+	Round            int
+	Rounds           int
+	EnableVotekick   bool
+	AllowCustomWords bool
 }
 
 func getLobby(w http.ResponseWriter, r *http.Request) *Lobby {
@@ -847,6 +862,7 @@ func CreateLobby(w http.ResponseWriter, r *http.Request) {
 	maxPlayers, maxPlayersInvalid := parseMaxPlayers(r.Form.Get("max_players"))
 	customWords, customWordsInvalid := parseCustomWords(r.Form.Get("custom_words"))
 	customWordChance, customWordChanceInvalid := parseCustomWordsChance(r.Form.Get("custom_words_chance"))
+	allowCustomWords := r.Form.Get("allow_custom_words") == "true"
 	clientsPerIPLimit, clientsPerIPLimitInvalid := parseClientsPerIPLimit(r.Form.Get("clients_per_ip_limit"))
 	enableVotekick := r.Form.Get("enable_votekick") == "true"
 
@@ -861,6 +877,7 @@ func CreateLobby(w http.ResponseWriter, r *http.Request) {
 		MaxPlayers:        r.Form.Get("max_players"),
 		CustomWords:       r.Form.Get("custom_words"),
 		CustomWordsChance: r.Form.Get("custom_words_chance"),
+		AllowCustomWords:  r.Form.Get("allow_custom_words") == "true",
 		ClientsPerIPLimit: r.Form.Get("clients_per_ip_limit"),
 		EnableVotekick:    r.Form.Get("enable_votekick") == "true",
 	}
@@ -893,7 +910,7 @@ func CreateLobby(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 		}
 	} else {
-		lobby := createLobby(password, drawingTime, rounds, maxPlayers, customWords, customWordChance, clientsPerIPLimit, enableVotekick)
+		lobby := createLobby(password, drawingTime, rounds, maxPlayers, customWords, customWordChance, allowCustomWords, clientsPerIPLimit, enableVotekick)
 		var playerName string
 		usernameCookie, noCookieError := r.Cookie("username")
 		if noCookieError == nil {
@@ -1000,12 +1017,13 @@ func ShowLobby(w http.ResponseWriter, r *http.Request) {
 			recalculateRanks(lobby)
 
 			pageData := &LobbyPageData{
-				Port:           *portHTTP,
-				Players:        lobby.Players,
-				LobbyID:        lobby.ID,
-				Round:          lobby.Round,
-				Rounds:         lobby.Rounds,
-				EnableVotekick: lobby.EnableVotekick,
+				Port:             *portHTTP,
+				Players:          lobby.Players,
+				LobbyID:          lobby.ID,
+				Round:            lobby.Round,
+				Rounds:           lobby.Rounds,
+				EnableVotekick:   lobby.EnableVotekick,
+				AllowCustomWords: lobby.AllowCustomWords,
 			}
 
 			for _, player := range lobby.Players {
@@ -1031,6 +1049,7 @@ func ShowLobby(w http.ResponseWriter, r *http.Request) {
 				Round:          lobby.Round,
 				Rounds:         lobby.Rounds,
 				EnableVotekick: lobby.EnableVotekick,
+				AllowCustomWords: lobby.AllowCustomWords,
 			}
 
 			lobbyPage.ExecuteTemplate(w, "lobby.html", pageData)
